@@ -74,8 +74,7 @@ module.exports = Paredit =
     source = editor.getText()
     sel = editor.getSelectedBufferRange()
     posIdx = buf.characterIndexForPosition(currPos)
-    parentSexps = editor.ast && PareditJS.walk.containingSexpsAt(
-      editor.ast, posIdx, PareditJS.walk.hasChildren)
+    parentSexps = editor.ast && PareditJS.walk.containingSexpsAt(editor.ast, posIdx, PareditJS.walk.hasChildren)
     res =
       pos: posIdx
       ast: editor.ast
@@ -370,15 +369,21 @@ module.exports = Paredit =
 
   deleteBwd: ->
     editor = atom.workspace.getActiveTextEditor()
-    check = editor.createCheckpoint()
-    @delete(editor, {backward: true})
-    editor.groupChangesSinceCheckpoint(check)
+    if editor.getSelectedText().length == 0
+      check = editor.createCheckpoint()
+      @delete(editor, {backward: true})
+      editor.groupChangesSinceCheckpoint(check)
+    else
+      editor.delete()
 
   deleteFwd: ->
     editor = atom.workspace.getActiveTextEditor()
-    check = editor.createCheckpoint()
-    @delete(editor, {backward: false})
-    editor.groupChangesSinceCheckpoint(check)
+    if editor.getSelectedText().length == 0
+      check = editor.createCheckpoint()
+      @delete(editor, {backward: false})
+      editor.groupChangesSinceCheckpoint(check)
+    else
+      editor.delete()
 
   # slurp/barf
 
@@ -435,9 +440,7 @@ module.exports = Paredit =
   # "Ctrl-Alt-t":                                   "paredit-transpose",
   # "Alt-Shift-s":                                  "paredit-splitSexp",
   # "Alt-s":                                        "paredit-spliceSexp",
-  # "Ctrl-Shift-]":                                 {name: "paredit-barfSexp", args: {backward: false}},
-  # "Ctrl-Shift-[":                                 {name: "paredit-barfSexp", args: {backward: true}},
-  # "Alt-Shift-9":                                  {name: "paredit-wrapAround", args: {open: '(', close: ')'}},
+    # "Alt-Shift-9":                                  {name: "paredit-wrapAround", args: {open: '(', close: ')'}},
   # "Alt-[":                                        {name: "paredit-wrapAround", args: {open: '[', close: ']'}},
   # "Alt-Shift-{|Alt-Shift-[":                      {name: "paredit-wrapAround", args: {open: '{', close: '}'}},
   # "Alt-Shift-0":                                  {name: "paredit-closeAndNewline", args: {close: ')'}},

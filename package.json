@@ -2,7 +2,7 @@
   "name": "atom-paredit",
   "main": "./lib/atom-paredit",
   "version": "0.0.1",
-  "description": "A short description of your package",
+  "description": "Paredit for Atom based on paredit.js.",
   "repository": "https://github.com/mme/atom-paredit",
   "license": "MIT",
   "engines": {

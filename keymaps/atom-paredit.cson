@@ -31,3 +31,7 @@
   'ctrl-right': 'paredit:slurpSexpFwd'
   'ctrl-(': 'paredit:slurpSexpBwd'
   'ctrl-alt-left': 'paredit:slurpSexpBwd'
+  'ctrl-}': 'paredit:barfSexpFwd'
+  'ctrl-left': 'paredit:barfSexpFwd'
+  'ctrl-{': 'paredit:barfSexpBwd'
+  'ctrl-alt-right': 'paredit:barfSexpBwd'

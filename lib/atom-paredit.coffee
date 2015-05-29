@@ -55,6 +55,9 @@ module.exports = Paredit =
     @subscriptions.add atom.commands.add 'atom-text-editor', 'paredit:deleteBwd': => @deleteBwd()
     @subscriptions.add atom.commands.add 'atom-text-editor', 'paredit:slurpSexpFwd': => @slurpSexpFwd()
     @subscriptions.add atom.commands.add 'atom-text-editor', 'paredit:slurpSexpBwd': => @slurpSexpBwd()
+    @subscriptions.add atom.commands.add 'atom-text-editor', 'paredit:barfSexpFwd': => @barfSexpFwd()
+    @subscriptions.add atom.commands.add 'atom-text-editor', 'paredit:barfSexpBwd': => @barfSexpBwd()
+
 
   deactivate: ->
     @modalPanel.destroy()
@@ -401,6 +404,29 @@ module.exports = Paredit =
     @slurpSexp(editor, {backward: true})
     editor.groupChangesSinceCheckpoint(check)
 
+  barfSexp: (editor, args) ->
+    args = args || {}
+    data = @prepareForSourceTransform(editor)
+    return if not data.ast
+
+    changes = PareditJS.editor.barfSexp(data.ast, data.source, data.pos, args)
+    if changes
+      @applyChanges(editor, changes)
+      @updateCursor(editor, changes.newIndex)
+
+  barfSexpFwd: ->
+    editor = atom.workspace.getActiveTextEditor()
+    check = editor.createCheckpoint()
+    @barfSexp(editor, {backward: false})
+    editor.groupChangesSinceCheckpoint(check)
+
+  barfSexpBwd: ->
+    editor = atom.workspace.getActiveTextEditor()
+    check = editor.createCheckpoint()
+    @barfSexp(editor, {backward: true})
+    editor.groupChangesSinceCheckpoint(check)
+
+
   # 'Ctrl-Alt-h':                                   'markDefun',
   # 'Shift-Command-Space|Ctrl-Shift-Space':         'expandRegion',
   # 'Ctrl-Command-space|Ctrl-Alt-Space':            'contractRegion',
@@ -411,8 +437,6 @@ module.exports = Paredit =
   # "Alt-s":                                        "paredit-spliceSexp",
   # "Ctrl-Shift-]":                                 {name: "paredit-barfSexp", args: {backward: false}},
   # "Ctrl-Shift-[":                                 {name: "paredit-barfSexp", args: {backward: true}},
-  # "Ctrl-Shift-9":                                 {name: "paredit-slurpSexp", args: {backward: false}},
-  # "Ctrl-Shift-0":                                 {name: "paredit-slurpSexp", args: {backward: true}},
   # "Alt-Shift-9":                                  {name: "paredit-wrapAround", args: {open: '(', close: ')'}},
   # "Alt-[":                                        {name: "paredit-wrapAround", args: {open: '[', close: ']'}},
   # "Alt-Shift-{|Alt-Shift-[":                      {name: "paredit-wrapAround", args: {open: '{', close: '}'}},

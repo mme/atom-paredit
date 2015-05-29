@@ -1,0 +1,329 @@
+PareditView = require './atom-paredit-view'
+PareditJS = require 'paredit.js'
+PareditJS.walk = module.require("paredit.js/lib/navigator").walk;
+{CompositeDisposable} = require 'atom'
+
+module.exports = Paredit =
+  pareditView: null
+  modalPanel: null
+  subscriptions: null
+
+
+  activate: (state) ->
+
+    atom.workspace.observeTextEditors (editor) =>
+      # if the editor is clojure etc.
+      # register for changes and update the ast
+      lang = editor.getRootScopeDescriptor().getScopesArray()[0]
+      if lang == "source.clojure"
+        editor.needsSync = true
+        @syncAST(editor)
+        # TODO: when an editor becomes lisp or not lisp?
+
+        editor.onDidChange () =>
+          editor.needsSync = true
+
+        editor.onDidStopChanging () =>
+          @syncAST(editor)
+
+    @pareditView = new PareditView(state.pareditViewState)
+    @modalPanel = atom.workspace.addModalPanel(item: @pareditView.getElement(), visible: false)
+
+    # Events subscribed to in atom's system can be easily cleaned up with a CompositeDisposable
+    @subscriptions = new CompositeDisposable
+
+    @subscriptions.add atom.commands.add 'atom-text-editor', 'paredit:indent': => @indent()
+    @subscriptions.add atom.commands.add 'atom-text-editor', 'paredit:newLineAndIndent': => @newLineAndIndent()
+
+    @subscriptions.add atom.commands.add 'atom-text-editor', 'paredit:forwardSexp': => @forwardSexp()
+    @subscriptions.add atom.commands.add 'atom-text-editor', 'paredit:backwardSexp': => @backwardSexp()
+    @subscriptions.add atom.commands.add 'atom-text-editor',
+      'paredit:forwardAndSelectSexp': => @forwardAndSelectSexp()
+    @subscriptions.add atom.commands.add 'atom-text-editor',
+      'paredit:backwardAndSelectSexp': => @backwardAndSelectSexp()
+
+    @subscriptions.add atom.commands.add 'atom-text-editor', 'paredit:openParens': => @openParens()
+    @subscriptions.add atom.commands.add 'atom-text-editor', 'paredit:openBracket': => @openBracket()
+    @subscriptions.add atom.commands.add 'atom-text-editor', 'paredit:openCurly': => @openCurly()
+    @subscriptions.add atom.commands.add 'atom-text-editor', 'paredit:openQuote': => @closeParens()
+    @subscriptions.add atom.commands.add 'atom-text-editor', 'paredit:closeCurly': => @closeCurly()
+    @subscriptions.add atom.commands.add 'atom-text-editor', 'paredit:closeBracket': => @closeBracket()
+    @subscriptions.add atom.commands.add 'atom-text-editor', 'paredit:closeParens': => @closeParens()
+
+  deactivate: ->
+    @modalPanel.destroy()
+    @subscriptions.dispose()
+    @pareditView.destroy()
+
+  serialize: ->
+    pareditViewState: @pareditView.serialize()
+
+  prepareForSourceTransform: (editor) ->
+    @syncAST(editor)
+    currPos = editor.getCursorBufferPosition()
+    buf = editor.getBuffer()
+    source = editor.getText()
+    sel = editor.getSelectedBufferRange()
+    posIdx = buf.characterIndexForPosition(currPos)
+    parentSexps = editor.ast && PareditJS.walk.containingSexpsAt(
+      editor.ast, posIdx, PareditJS.walk.hasChildren)
+    res =
+      pos: posIdx
+      ast: editor.ast
+      selStart: buf.characterIndexForPosition(sel.start)
+      selEnd: buf.characterIndexForPosition(sel.end)
+      source: source
+      parentSexps: parentSexps
+
+  syncAST: (editor) ->
+    if editor.needsSync
+      editor.ast = PareditJS.parse(editor.getText())
+      @highlightErrors(editor)
+      editor.needsSync = false
+
+  applyChanges: (editor, c) ->
+    return if not c
+
+    buf = editor.getBuffer()
+
+    for change in c.changes
+      if change[0] is "remove"
+        p1 = buf.positionForCharacterIndex(change[1])
+        p2 = buf.positionForCharacterIndex(change[1]+change[2])
+        buf.delete([p1,p2])
+      else if change[0] is "insert"
+        p1 = buf.positionForCharacterIndex(change[1])
+        buf.insert(p1,change[2])
+
+  updateCursor: (editor, idx) ->
+    buf = editor.getBuffer()
+
+    if idx
+      editor.setCursorBufferPosition(
+        buf.positionForCharacterIndex(idx))
+
+  highlightErrors: (editor) ->
+
+    oldMarkers = editor.findMarkers({pareditError: true})
+    for marker in oldMarkers
+      marker.destroy()
+
+    if editor.ast.errors && editor.ast.errors.length
+      for err in editor.ast.errors
+        buf = editor.getBuffer()
+        p1 = buf.positionForCharacterIndex(err.start)
+        p2 = buf.positionForCharacterIndex(err.end)
+        marker = editor.markBufferRange(
+          [p1, p2], {invalidate: 'touch', pareditError: true})
+        editor.decorateMarker(marker,
+          {type: 'highlight', class: 'highlight-paredit-error'})
+
+# Indentation
+
+  doIndent: (editor) ->
+    data = @prepareForSourceTransform(editor)
+
+    if not data.ast
+      return
+
+    changes = PareditJS.editor.indentRange(data.ast, data.source, data.selStart, data.selEnd)
+    @applyChanges(editor, changes)
+
+  indent: ->
+    editor = atom.workspace.getActiveTextEditor()
+    check = editor.createCheckpoint()
+    @doIndent(editor)
+    editor.groupChangesSinceCheckpoint(check)
+
+  newLineAndIndent: ->
+    editor = atom.workspace.getActiveTextEditor()
+    check = editor.createCheckpoint()
+    editor.insertText("\n")
+    @doIndent(editor)
+    editor.groupChangesSinceCheckpoint(check)
+
+  forwardSexp: ->
+    editor = atom.workspace.getActiveTextEditor()
+    @forward(editor,false)
+
+  forwardAndSelectSexp: ->
+    editor = atom.workspace.getActiveTextEditor()
+    @forward(editor,true)
+
+  forward: (editor, select) ->
+      data = @prepareForSourceTransform(editor)
+      buf = editor.getBuffer()
+      idx = data.pos
+
+      return if (!data.ast || !data.ast.type == 'toplevel')
+
+      loop
+        next = PareditJS.walk.nextSexp(data.ast, idx)
+
+        if next && next.end != data.pos && next.type != 'comment'
+          pos = buf.positionForCharacterIndex(next.end)
+          if select
+            editor.selectToBufferPosition(pos)
+          else
+            editor.setCursorBufferPosition(pos)
+          break
+
+        idx = idx + 1
+
+        break if idx > editor.getBuffer().getMaxCharacterIndex()
+
+        prev = PareditJS.walk.prevSexp(data.ast, idx)
+
+        if prev && prev.end == idx && prev.type != 'comment'
+          pos = buf.positionForCharacterIndex(idx)
+          if select
+            editor.selectToBufferPosition(pos)
+          else
+            editor.setCursorBufferPosition(pos)
+          break
+
+  backwardSexp: ->
+    editor = atom.workspace.getActiveTextEditor()
+    @back(editor,false)
+
+  backwardAndSelectSexp: ->
+    editor = atom.workspace.getActiveTextEditor()
+    @back(editor,true)
+
+  back: (editor, select)->
+
+    data = @prepareForSourceTransform(editor)
+    buf = editor.getBuffer()
+    idx = data.pos
+
+    return if (!data.ast || !data.ast.type == 'toplevel')
+
+    loop
+      prev = PareditJS.walk.prevSexp(data.ast, idx)
+
+      if prev && prev.start != data.pos && prev.type != 'comment'
+        pos = buf.positionForCharacterIndex(prev.start)
+        if select
+          editor.selectToBufferPosition(pos)
+        else
+          editor.setCursorBufferPosition(pos)
+        break
+
+      idx = idx - 1
+
+      break if idx == 0
+
+      next = PareditJS.walk.nextSexp(data.ast, idx)
+
+      if next && next.start == idx && next.type != 'comment'
+        pos = buf.positionForCharacterIndex(idx)
+        if select
+          editor.selectToBufferPosition(pos)
+        else
+          editor.setCursorBufferPosition(pos)
+        break
+
+# Parens
+
+  open: (args) ->
+    editor = atom.workspace.getActiveTextEditor()
+    data = @prepareForSourceTransform(editor)
+
+    if not data.ast
+      editor.insertText(args.open)
+      return
+
+    args.freeEdits = PareditJS.freeEdits
+
+    if data.selStart is not data.selEnd
+      args.endIdx = data.selEnd
+    idx =
+      if args.endIdx
+        data.selStart
+      else
+        data.pos
+
+    changes = PareditJS.editor.openList(data.ast, data.source, idx, args)
+
+    if changes
+      @applyChanges(editor, changes)
+      @updateCursor(editor, changes.newIndex)  
+
+  openParens: ->
+    args =
+      open: '('
+      close: ')'
+    @open(args)
+
+  openBracket: ->
+    args =
+      open: '['
+      close: ']'
+    @open(args)
+
+  openCurly: ->
+    args =
+      open: '{'
+      close: '}'
+    @open(args)
+
+  openQuote: ->
+    args =
+      open: '"'
+      close: '"'
+    @open(args)
+
+  close: (args) ->
+    editor = atom.workspace.getActiveTextEditor()
+    data = @prepareForSourceTransform(editor)
+
+    args.freeEdits = PareditJS.freeEdits
+
+    if args.freeEdits || !data.ast || (data.ast.errors && data.ast.errors.length)
+      #|| !@clojureSexpMovement("closeList")
+      editor.insertText(args.close)
+
+  closeCurly: ->
+    args =
+      open: '{'
+      close: '}'
+    @close(args)
+
+  closeBracket: ->
+    args =
+      open: '['
+      close: ']'
+    @close(args)
+
+  closeParens: ->
+    args =
+      open: '('
+      close: ')'
+    @close(args)
+
+
+  # 'Ctrl-Alt-h':                                   'markDefun',
+  # 'Shift-Command-Space|Ctrl-Shift-Space':         'expandRegion',
+  # 'Ctrl-Command-space|Ctrl-Alt-Space':            'contractRegion',
+  # 'Ctrl-`':                                       'gotoNextError',
+  #
+  # "Ctrl-Alt-t":                                   "paredit-transpose",
+  # "Alt-Shift-s":                                  "paredit-splitSexp",
+  # "Alt-s":                                        "paredit-spliceSexp",
+  # "Ctrl-Alt-k":                                   {name: "paredit-killSexp", args: {backward: false}},
+  # "Ctrl-Alt-Backspace":                           {name: "paredit-killSexp", args: {backward: true}},
+  # "Ctrl-Shift-]":                                 {name: "paredit-barfSexp", args: {backward: false}},
+  # "Ctrl-Shift-[":                                 {name: "paredit-barfSexp", args: {backward: true}},
+  # "Ctrl-Shift-9":                                 {name: "paredit-slurpSexp", args: {backward: false}},
+  # "Ctrl-Shift-0":                                 {name: "paredit-slurpSexp", args: {backward: true}},
+  # "Alt-Shift-9":                                  {name: "paredit-wrapAround", args: {open: '(', close: ')'}},
+  # "Alt-[":                                        {name: "paredit-wrapAround", args: {open: '[', close: ']'}},
+  # "Alt-Shift-{|Alt-Shift-[":                      {name: "paredit-wrapAround", args: {open: '{', close: '}'}},
+  # "Alt-Shift-0":                                  {name: "paredit-closeAndNewline", args: {close: ')'}},
+  # "Alt-]":                                        {name: "paredit-closeAndNewline", args: {close: ']'}},
+  # "Alt-Up|Alt-Shift-Up":                          {name: "paredit-spliceSexpKill", args: {backward: true}},
+  # "Alt-Down||Alt-Shift-Down":                     {name: "paredit-spliceSexpKill", args: {backward: false}},
+  # "Ctrl-x `":                                     "gotoNextError",
+  # "\"":                                           {name: "paredit-openList", args: {open: "\"", close:
+  # "Backspace":                                    {name: "paredit-delete", args: {backward: true}},
+  # "Ctrl-d|delete":                                {name: "paredit-delete", args: {backward: false}}

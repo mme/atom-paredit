@@ -1,0 +1,24 @@
+# Keybindings require three things to be fully defined: A selector that is
+# matched against the focused element, the keystroke and the command to
+# execute.
+#
+# Below is a basic keybinding which registers on all platforms by applying to
+# the root workspace element.
+
+# For more detailed documentation see
+# https://atom.io/docs/latest/behind-atom-keymaps-in-depth
+'.editor[data-grammar="source clojure"]:not(.autocomplete-active)':
+  'tab': 'paredit:indent'
+  'enter': 'paredit:newLineAndIndent'
+  'shift-enter': 'paredit:newLineAndIndent'
+  'ctrl-alt-f': 'paredit:forwardSexp'
+  'ctrl-alt-b': 'paredit:backwardSexp'
+  'ctrl-shift-alt-f': 'paredit:forwardAndSelectSexp'
+  'ctrl-shift-alt-b': 'paredit:backwardAndSelectSexp'
+  '(': 'paredit:openParens'
+  '[': 'paredit:openBracket'
+  '{': 'paredit:openCurly'
+  #'"': 'paredit:openQuote'
+  '}': 'paredit:closeCurly'
+  ']': 'paredit:closeBracket'
+  ')': 'paredit:closeParens'

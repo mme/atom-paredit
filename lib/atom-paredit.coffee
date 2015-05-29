@@ -431,7 +431,8 @@ module.exports = Paredit =
     @barfSexp(editor, {backward: true})
     editor.groupChangesSinceCheckpoint(check)
 
-
+  # TODO:
+  # indent on paste
   # 'Ctrl-Alt-h':                                   'markDefun',
   # 'Shift-Command-Space|Ctrl-Shift-Space':         'expandRegion',
   # 'Ctrl-Command-space|Ctrl-Alt-Space':            'contractRegion',
@@ -440,7 +441,7 @@ module.exports = Paredit =
   # "Ctrl-Alt-t":                                   "paredit-transpose",
   # "Alt-Shift-s":                                  "paredit-splitSexp",
   # "Alt-s":                                        "paredit-spliceSexp",
-    # "Alt-Shift-9":                                  {name: "paredit-wrapAround", args: {open: '(', close: ')'}},
+  # "Alt-Shift-9":                                  {name: "paredit-wrapAround", args: {open: '(', close: ')'}},
   # "Alt-[":                                        {name: "paredit-wrapAround", args: {open: '[', close: ']'}},
   # "Alt-Shift-{|Alt-Shift-[":                      {name: "paredit-wrapAround", args: {open: '{', close: '}'}},
   # "Alt-Shift-0":                                  {name: "paredit-closeAndNewline", args: {close: ')'}},

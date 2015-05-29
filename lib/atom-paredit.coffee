@@ -49,6 +49,11 @@ module.exports = Paredit =
     @subscriptions.add atom.commands.add 'atom-text-editor', 'paredit:closeCurly': => @closeCurly()
     @subscriptions.add atom.commands.add 'atom-text-editor', 'paredit:closeBracket': => @closeBracket()
     @subscriptions.add atom.commands.add 'atom-text-editor', 'paredit:closeParens': => @closeParens()
+    @subscriptions.add atom.commands.add 'atom-text-editor', 'paredit:killSexpFwd': => @killSexpFwd()
+    @subscriptions.add atom.commands.add 'atom-text-editor', 'paredit:killSexpBwd': => @killSexpBwd()
+    @subscriptions.add atom.commands.add 'atom-text-editor', 'paredit:deleteFwd': => @deleteFwd()
+    @subscriptions.add atom.commands.add 'atom-text-editor', 'paredit:deleteBwd': => @deleteBwd()
+
 
   deactivate: ->
     @modalPanel.destroy()
@@ -141,6 +146,7 @@ module.exports = Paredit =
     editor.insertText("\n")
     @doIndent(editor)
     editor.groupChangesSinceCheckpoint(check)
+
 
   forwardSexp: ->
     editor = atom.workspace.getActiveTextEditor()
@@ -247,7 +253,7 @@ module.exports = Paredit =
 
     if changes
       @applyChanges(editor, changes)
-      @updateCursor(editor, changes.newIndex)  
+      @updateCursor(editor, changes.newIndex)
 
   openParens: ->
     args =
@@ -273,14 +279,25 @@ module.exports = Paredit =
       close: '"'
     @open(args)
 
+  closeList: (editor) ->
+      data = @prepareForSourceTransform(editor)
+      buf = editor.getBuffer()
+
+      return false if (!data.ast || !data.ast.type == 'toplevel')
+      moveToIdx = PareditJS.navigator.closeList(data.ast, data.pos)
+      return false if (moveToIdx == undefined)
+
+      pos = buf.positionForCharacterIndex(moveToIdx)
+      editor.setCursorBufferPosition(pos)
+      return true
+
   close: (args) ->
     editor = atom.workspace.getActiveTextEditor()
     data = @prepareForSourceTransform(editor)
 
     args.freeEdits = PareditJS.freeEdits
 
-    if args.freeEdits || !data.ast || (data.ast.errors && data.ast.errors.length)
-      #|| !@clojureSexpMovement("closeList")
+    if args.freeEdits || !data.ast || (data.ast.errors && data.ast.errors.length) || !@closeList(editor)
       editor.insertText(args.close)
 
   closeCurly: ->
@@ -301,6 +318,63 @@ module.exports = Paredit =
       close: ')'
     @close(args)
 
+  # deleting
+
+  killSexp: (editor, args) ->
+    args = args || {}
+    data = @prepareForSourceTransform(editor)
+    return if not data.ast
+    changes = PareditJS.editor.killSexp(data.ast, data.source, data.pos, args);
+    if changes
+      @applyChanges(editor, changes)
+      @updateCursor(editor, changes.newIndex)
+
+  killSexpFwd: ->
+    editor = atom.workspace.getActiveTextEditor()
+    check = editor.createCheckpoint()
+    @killSexp(editor, {backward: false})
+    editor.groupChangesSinceCheckpoint(check)
+
+  killSexpBwd: ->
+    editor = atom.workspace.getActiveTextEditor()
+    check = editor.createCheckpoint()
+    @killSexp(editor, {backward: true})
+    editor.groupChangesSinceCheckpoint(check)
+
+  delete: (editor, args) ->
+    args = args || {}
+
+    if PareditJS.freeEdits
+      args.freeEdits = true
+
+    data = @prepareForSourceTransform(editor)
+    return if not data.ast
+
+    if data.selStart != data.selEnd
+      args.endIdx = data.selEnd
+    pos = if args.endIdx then data.selStart else data.pos
+    changes = PareditJS.editor.delete(data.ast, data.source, pos, args)
+    if changes
+      @applyChanges(editor, changes)
+      # hack to make it behave like emacs paredit
+      if data.pos == changes.newIndex and args.backward
+        changes.newIndex = Math.max(0, changes.newIndex - 1)
+      else if data.pos == changes.newIndex and !args.backward
+        changes.newIndex = changes.newIndex + 1
+
+      @updateCursor(editor, changes.newIndex)
+
+  deleteBwd: ->
+    editor = atom.workspace.getActiveTextEditor()
+    check = editor.createCheckpoint()
+    @delete(editor, {backward: true})
+    editor.groupChangesSinceCheckpoint(check)
+
+  deleteFwd: ->
+    editor = atom.workspace.getActiveTextEditor()
+    check = editor.createCheckpoint()
+    @delete(editor, {backward: false})
+    editor.groupChangesSinceCheckpoint(check)
 
   # 'Ctrl-Alt-h':                                   'markDefun',
   # 'Shift-Command-Space|Ctrl-Shift-Space':         'expandRegion',
@@ -310,8 +384,6 @@ module.exports = Paredit =
   # "Ctrl-Alt-t":                                   "paredit-transpose",
   # "Alt-Shift-s":                                  "paredit-splitSexp",
   # "Alt-s":                                        "paredit-spliceSexp",
-  # "Ctrl-Alt-k":                                   {name: "paredit-killSexp", args: {backward: false}},
-  # "Ctrl-Alt-Backspace":                           {name: "paredit-killSexp", args: {backward: true}},
   # "Ctrl-Shift-]":                                 {name: "paredit-barfSexp", args: {backward: false}},
   # "Ctrl-Shift-[":                                 {name: "paredit-barfSexp", args: {backward: true}},
   # "Ctrl-Shift-9":                                 {name: "paredit-slurpSexp", args: {backward: false}},
@@ -325,5 +397,3 @@ module.exports = Paredit =
   # "Alt-Down||Alt-Shift-Down":                     {name: "paredit-spliceSexpKill", args: {backward: false}},
   # "Ctrl-x `":                                     "gotoNextError",
   # "\"":                                           {name: "paredit-openList", args: {open: "\"", close:
-  # "Backspace":                                    {name: "paredit-delete", args: {backward: true}},
-  # "Ctrl-d|delete":                                {name: "paredit-delete", args: {backward: false}}

@@ -53,7 +53,8 @@ module.exports = Paredit =
     @subscriptions.add atom.commands.add 'atom-text-editor', 'paredit:killSexpBwd': => @killSexpBwd()
     @subscriptions.add atom.commands.add 'atom-text-editor', 'paredit:deleteFwd': => @deleteFwd()
     @subscriptions.add atom.commands.add 'atom-text-editor', 'paredit:deleteBwd': => @deleteBwd()
-
+    @subscriptions.add atom.commands.add 'atom-text-editor', 'paredit:slurpSexpFwd': => @slurpSexpFwd()
+    @subscriptions.add atom.commands.add 'atom-text-editor', 'paredit:slurpSexpBwd': => @slurpSexpBwd()
 
   deactivate: ->
     @modalPanel.destroy()
@@ -374,6 +375,30 @@ module.exports = Paredit =
     editor = atom.workspace.getActiveTextEditor()
     check = editor.createCheckpoint()
     @delete(editor, {backward: false})
+    editor.groupChangesSinceCheckpoint(check)
+
+  # slurp/barf
+
+  slurpSexp: (editor, args) ->
+    args = args || {}
+    data = @prepareForSourceTransform(editor)
+    return if not data.ast
+
+    changes = PareditJS.editor.slurpSexp(data.ast, data.source, data.pos, args)
+    if changes
+      @applyChanges(editor, changes)
+      @updateCursor(editor, changes.newIndex)
+
+  slurpSexpFwd: ->
+    editor = atom.workspace.getActiveTextEditor()
+    check = editor.createCheckpoint()
+    @slurpSexp(editor, {backward: false})
+    editor.groupChangesSinceCheckpoint(check)
+
+  slurpSexpBwd: ->
+    editor = atom.workspace.getActiveTextEditor()
+    check = editor.createCheckpoint()
+    @slurpSexp(editor, {backward: true})
     editor.groupChangesSinceCheckpoint(check)
 
   # 'Ctrl-Alt-h':                                   'markDefun',

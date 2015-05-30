@@ -1,11 +1,8 @@
-PareditView = require './atom-paredit-view'
 PareditJS = require 'paredit.js'
 PareditJS.walk = module.require("paredit.js/lib/navigator").walk;
 {CompositeDisposable} = require 'atom'
 
 module.exports = Paredit =
-  pareditView: null
-  modalPanel: null
   subscriptions: null
 
 
@@ -25,10 +22,6 @@ module.exports = Paredit =
 
         editor.onDidStopChanging () =>
           @syncAST(editor)
-
-    @pareditView = new PareditView(state.pareditViewState)
-    @modalPanel = atom.workspace.addModalPanel(item: @pareditView.getElement(), visible: false)
-
     # Events subscribed to in atom's system can be easily cleaned up with a CompositeDisposable
     @subscriptions = new CompositeDisposable
 
@@ -60,12 +53,9 @@ module.exports = Paredit =
 
 
   deactivate: ->
-    @modalPanel.destroy()
     @subscriptions.dispose()
-    @pareditView.destroy()
 
   serialize: ->
-    pareditViewState: @pareditView.serialize()
 
   prepareForSourceTransform: (editor) ->
     @syncAST(editor)

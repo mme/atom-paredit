@@ -97,8 +97,7 @@ module.exports = Paredit =
     buf = editor.getBuffer()
 
     if idx
-      editor.setCursorBufferPosition(
-        buf.positionForCharacterIndex(idx))
+      editor.setCursorBufferPosition(buf.positionForCharacterIndex(idx))
 
   highlightErrors: (editor) ->
 
@@ -350,12 +349,14 @@ module.exports = Paredit =
     if changes
       @applyChanges(editor, changes)
       # hack to make it behave like emacs paredit
+
+
       if data.pos == changes.newIndex and args.backward
         changes.newIndex = Math.max(0, changes.newIndex - 1)
-      else if data.pos == changes.newIndex and !args.backward
-        changes.newIndex = changes.newIndex + 1
-
-      @updateCursor(editor, changes.newIndex)
+      # remove forward cursor movement for now
+      # else if data.pos == changes.newIndex and !args.backward
+        # changes.newIndex = changes.newIndex + 1
+        # @updateCursor(editor, changes.newIndex)
 
   deleteBwd: ->
     editor = atom.workspace.getActiveTextEditor()
